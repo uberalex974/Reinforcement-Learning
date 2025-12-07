@@ -1,5 +1,5 @@
 #pragma once
-#include "ExperienceBuffer.h";
+#include "ExperienceBuffer.h"
 #include <GigaLearnCPP/Util/Report.h>
 #include <GigaLearnCPP/Util/Timer.h>
 #include <GigaLearnCPP/PPO/PPOLearnerConfig.h>
@@ -40,6 +40,7 @@ namespace GGL {
 		// If models is null, this->models will be used
 		void InferActions(torch::Tensor obs, torch::Tensor actionMasks, torch::Tensor* outActions, torch::Tensor* outLogProbs, ModelSet* models = NULL);
 		torch::Tensor InferCritic(torch::Tensor obs);
+		torch::Tensor InferCriticBatched(torch::Tensor obs, int64_t maxBatchSize);
 
 		// Perhaps they should be somewhere else? Should probably make an inference interface...
 		static torch::Tensor InferPolicyProbsFromModels(

@@ -1,0 +1,1085 @@
+GigaLearnBot starting...
+GigaLearn: démarrage en mode entrainement (double-clique sans arguments)
+Initializing RocketSim version 2.1.1, created by ZealanL...
+Loading arena meshes for soccar...
+   > Loaded 483 verts and 880 tris, hash: 0xa160baf9
+   > Loaded 483 verts and 880 tris, hash: 0x2811eee8
+   > Loaded 80 verts and 126 tris, hash: 0xb81ac8b9
+   > Loaded 80 verts and 126 tris, hash: 0x760358d3
+   > Loaded 80 verts and 126 tris, hash: 0x73ae4940
+   > Loaded 80 verts and 126 tris, hash: 0x918f4a4e
+   > Loaded 18 verts and 16 tris, hash: 0x1f8ee550
+   > Loaded 18 verts and 16 tris, hash: 0x255ba8c1
+   > Loaded 483 verts and 880 tris, hash: 0x14b84668
+   > Loaded 483 verts and 880 tris, hash: 0xec759ebf
+   > Loaded 536 verts and 983 tris, hash: 0x94fb0d5c
+   > Loaded 536 verts and 983 tris, hash: 0xdea07102
+   > Loaded 536 verts and 983 tris, hash: 0xbd4fbea8
+   > Loaded 536 verts and 983 tris, hash: 0x39a47f63
+   > Loaded 18 verts and 16 tris, hash: 0x3d79d25d
+   > Loaded 18 verts and 16 tris, hash: 0xd84c7a68
+RocketSim::Init(): Finished loading arena collision meshes:
+ > Soccar: 16
+ > Hoops: 0
+Finished initializing RocketSim in 0.024s!
+Model scale factor (auto): 1.5
+Shared head sizes: [384, 384]
+Policy sizes: [384, 384, 384]
+Critic sizes: [384, 384, 384]
+Learner::Learner():
+	Checkpoint Save/Load Dir: "C:\\Giga\\GigaLearnCPP-Leak\\checkpoints"
+	Using CUDA GPU device...
+	Creating envs...
+	Making PPO learner...
+PPOLearner: Set learning rate to [2.000000e-04, 2.000000e-04]
+Model parameter counts:
+	"critic": 446,209
+	"policy": 480,474
+	"shared_head": 213,888
+	[Total]: 1,140,571
+Loading most recent checkpoint in "C:\\Giga\\GigaLearnCPP-Leak\\checkpoints"...
+ > Loading checkpoint "C:\\Giga\\GigaLearnCPP-Leak\\checkpoints\\70055936"...
+PPOLearner: Set learning rate to [2.000000e-04, 2.000000e-04]
+ > Done.
+	Run ID: 99r6lscu
+Initializing MetricSender...
+ > Continuing run with ID : "99r6lscu"...
+ > MetricSender initalized.
+========================================
+Learner::Start():
+	Obs size: 167
+	Action amount: 90
+Press 'Q' to save and quit!
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.2758
+Policy Entropy: 0.7763
+
+Policy Update Magnitude: 0.0914
+Critic Update Magnitude: 0.1067
+
+Collection Steps/Second: 46,022.8984
+Consumption Steps/Second: 215,388.5469
+Overall Steps/Second: 37,920.3203
+
+Collection Time: 5.3844
+ - Inference Time: 0.8448
+ - Env Step Time: 3.8450
+Consumption Time: 1.1505
+ - GAE Time: 0.0025
+ - PPO Learn Time: 1.0154
+Collected Timesteps: 247,808
+Total Timesteps: 70,303,744
+Total Iterations: 660
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.2984
+Policy Entropy: 0.7735
+
+Policy Update Magnitude: 0.0882
+Critic Update Magnitude: 0.1167
+
+Collection Steps/Second: 161,222.0938
+Consumption Steps/Second: 252,210.8125
+Overall Steps/Second: 98,352.0078
+
+Collection Time: 1.5371
+ - Inference Time: 0.4629
+ - Env Step Time: 0.5038
+Consumption Time: 0.9825
+ - GAE Time: 0.0023
+ - PPO Learn Time: 0.8323
+Collected Timesteps: 247,808
+Total Timesteps: 70,551,552
+Total Iterations: 661
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3319
+Policy Entropy: 0.7705
+
+Policy Update Magnitude: 0.0529
+Critic Update Magnitude: 0.0534
+
+Collection Steps/Second: 163,053.4219
+Consumption Steps/Second: 462,351.9375
+Overall Steps/Second: 120,542.7188
+
+Collection Time: 1.3440
+ - Inference Time: 0.4435
+ - Env Step Time: 0.4476
+Consumption Time: 0.4740
+ - GAE Time: 7.091000e-04
+ - PPO Learn Time: 0.4130
+Collected Timesteps: 219,136
+Total Timesteps: 70,770,688
+Total Iterations: 662
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.2689
+Policy Entropy: 0.7771
+
+Policy Update Magnitude: 0.0536
+Critic Update Magnitude: 0.0533
+
+Collection Steps/Second: 106,083.0469
+Consumption Steps/Second: 57,716.1914
+Overall Steps/Second: 37,379.3516
+
+Collection Time: 0.2703
+ - Inference Time: 0.0502
+ - Env Step Time: 0.0690
+Consumption Time: 0.4968
+ - GAE Time: 0.0012
+ - PPO Learn Time: 0.4137
+Collected Timesteps: 28,672
+Total Timesteps: 70,799,360
+Total Iterations: 663
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3150
+Policy Entropy: 0.7736
+
+Policy Update Magnitude: 0.0553
+Critic Update Magnitude: 0.0599
+
+Collection Steps/Second: 186,711.9844
+Consumption Steps/Second: 378,016
+Overall Steps/Second: 124,980.7422
+
+Collection Time: 0.9872
+ - Inference Time: 0.3028
+ - Env Step Time: 0.3394
+Consumption Time: 0.4876
+ - GAE Time: 6.785000e-04
+ - PPO Learn Time: 0.4172
+Collected Timesteps: 184,320
+Total Timesteps: 70,983,680
+Total Iterations: 664
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3025
+Policy Entropy: 0.7757
+
+Policy Update Magnitude: 0.0565
+Critic Update Magnitude: 0.0522
+
+Collection Steps/Second: 127,774.5625
+Consumption Steps/Second: 122,888.5547
+Overall Steps/Second: 62,641.9688
+
+Collection Time: 0.4969
+ - Inference Time: 0.1055
+ - Env Step Time: 0.1393
+Consumption Time: 0.5166
+ - GAE Time: 0.0011
+ - PPO Learn Time: 0.4547
+Collected Timesteps: 63,488
+Total Timesteps: 71,047,168
+Total Iterations: 665
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3147
+Policy Entropy: 0.7730
+
+Policy Update Magnitude: 0.0551
+Critic Update Magnitude: 0.0472
+
+Collection Steps/Second: 107,572.0469
+Consumption Steps/Second: 291,259.9688
+Overall Steps/Second: 78,557.9609
+
+Collection Time: 1.2946
+ - Inference Time: 0.2881
+ - Env Step Time: 0.4874
+Consumption Time: 0.4781
+ - GAE Time: 0.0010
+ - PPO Learn Time: 0.4213
+Collected Timesteps: 139,264
+Total Timesteps: 71,186,432
+Total Iterations: 666
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3010
+Policy Entropy: 0.7740
+
+Policy Update Magnitude: 0.0535
+Critic Update Magnitude: 0.0473
+
+Collection Steps/Second: 141,699.8906
+Consumption Steps/Second: 223,189.7812
+Overall Steps/Second: 86,672.6797
+
+Collection Time: 0.7660
+ - Inference Time: 0.1915
+ - Env Step Time: 0.2442
+Consumption Time: 0.4863
+ - GAE Time: 8.101000e-04
+ - PPO Learn Time: 0.4251
+Collected Timesteps: 108,544
+Total Timesteps: 71,294,976
+Total Iterations: 667
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3168
+Policy Entropy: 0.7730
+
+Policy Update Magnitude: 0.0562
+Critic Update Magnitude: 0.0586
+
+Collection Steps/Second: 172,031.3125
+Consumption Steps/Second: 272,329.7188
+Overall Steps/Second: 105,430.5781
+
+Collection Time: 0.7857
+ - Inference Time: 0.2320
+ - Env Step Time: 0.2872
+Consumption Time: 0.4963
+ - GAE Time: 0.0012
+ - PPO Learn Time: 0.4357
+Collected Timesteps: 135,168
+Total Timesteps: 71,430,144
+Total Iterations: 668
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3229
+Policy Entropy: 0.7731
+
+Policy Update Magnitude: 0.0591
+Critic Update Magnitude: 0.0611
+
+Collection Steps/Second: 133,007.6250
+Consumption Steps/Second: 223,893.5312
+Overall Steps/Second: 83,439.2031
+
+Collection Time: 0.8469
+ - Inference Time: 0.2166
+ - Env Step Time: 0.2878
+Consumption Time: 0.5031
+ - GAE Time: 0.0022
+ - PPO Learn Time: 0.4408
+Collected Timesteps: 112,640
+Total Timesteps: 71,542,784
+Total Iterations: 669
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3471
+Policy Entropy: 0.7701
+
+Policy Update Magnitude: 0.0596
+Critic Update Magnitude: 0.0605
+
+Collection Steps/Second: 160,847.2812
+Consumption Steps/Second: 247,528.1406
+Overall Steps/Second: 97,494.1797
+
+Collection Time: 0.7512
+ - Inference Time: 0.2236
+ - Env Step Time: 0.2387
+Consumption Time: 0.4882
+ - GAE Time: 8.293000e-04
+ - PPO Learn Time: 0.4362
+Collected Timesteps: 120,832
+Total Timesteps: 71,663,616
+Total Iterations: 670
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3336
+Policy Entropy: 0.7704
+
+Policy Update Magnitude: 0.0587
+Critic Update Magnitude: 0.0555
+
+Collection Steps/Second: 159,288.6875
+Consumption Steps/Second: 252,383.3906
+Overall Steps/Second: 97,654.9531
+
+Collection Time: 0.7971
+ - Inference Time: 0.2435
+ - Env Step Time: 0.2420
+Consumption Time: 0.5031
+ - GAE Time: 0.0011
+ - PPO Learn Time: 0.4374
+Collected Timesteps: 126,976
+Total Timesteps: 71,790,592
+Total Iterations: 671
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3514
+Policy Entropy: 0.7701
+
+Policy Update Magnitude: 0.0598
+Critic Update Magnitude: 0.0482
+
+Collection Steps/Second: 165,564.1406
+Consumption Steps/Second: 265,648.8438
+Overall Steps/Second: 101,995.8281
+
+Collection Time: 0.7669
+ - Inference Time: 0.2118
+ - Env Step Time: 0.2500
+Consumption Time: 0.4780
+ - GAE Time: 9.822000e-04
+ - PPO Learn Time: 0.4226
+Collected Timesteps: 126,976
+Total Timesteps: 71,917,568
+Total Iterations: 672
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3214
+Policy Entropy: 0.7695
+
+Policy Update Magnitude: 0.0592
+Critic Update Magnitude: 0.0475
+
+Collection Steps/Second: 167,095.0312
+Consumption Steps/Second: 255,380.3281
+Overall Steps/Second: 101,006.5625
+
+Collection Time: 0.7231
+ - Inference Time: 0.1837
+ - Env Step Time: 0.2490
+Consumption Time: 0.4731
+ - GAE Time: 8.729000e-04
+ - PPO Learn Time: 0.4179
+Collected Timesteps: 120,832
+Total Timesteps: 72,038,400
+Total Iterations: 673
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3516
+Policy Entropy: 0.7667
+
+Policy Update Magnitude: 0.0565
+Critic Update Magnitude: 0.0537
+
+Collection Steps/Second: 188,983.0156
+Consumption Steps/Second: 253,206.4688
+Overall Steps/Second: 108,215.4219
+
+Collection Time: 0.6394
+ - Inference Time: 0.1876
+ - Env Step Time: 0.2334
+Consumption Time: 0.4772
+ - GAE Time: 8.633000e-04
+ - PPO Learn Time: 0.4255
+Collected Timesteps: 120,832
+Total Timesteps: 72,159,232
+Total Iterations: 674
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3610
+Policy Entropy: 0.7673
+
+Policy Update Magnitude: 0.0563
+Critic Update Magnitude: 0.0542
+
+Collection Steps/Second: 182,188.0469
+Consumption Steps/Second: 268,941.1562
+Overall Steps/Second: 108,611.6016
+
+Collection Time: 0.6970
+ - Inference Time: 0.2098
+ - Env Step Time: 0.2316
+Consumption Time: 0.4721
+ - GAE Time: 7.026000e-04
+ - PPO Learn Time: 0.4171
+Collected Timesteps: 126,976
+Total Timesteps: 72,286,208
+Total Iterations: 675
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3641
+Policy Entropy: 0.7660
+
+Policy Update Magnitude: 0.0588
+Critic Update Magnitude: 0.0446
+
+Collection Steps/Second: 188,173.5156
+Consumption Steps/Second: 252,692.3906
+Overall Steps/Second: 107,855.9609
+
+Collection Time: 0.6204
+ - Inference Time: 0.1871
+ - Env Step Time: 0.2189
+Consumption Time: 0.4620
+ - GAE Time: 5.858000e-04
+ - PPO Learn Time: 0.4159
+Collected Timesteps: 116,736
+Total Timesteps: 72,402,944
+Total Iterations: 676
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3788
+Policy Entropy: 0.7659
+
+Policy Update Magnitude: 0.0629
+Critic Update Magnitude: 0.0469
+
+Collection Steps/Second: 172,857.7969
+Consumption Steps/Second: 235,713.0156
+Overall Steps/Second: 99,725.2656
+
+Collection Time: 0.6398
+ - Inference Time: 0.1910
+ - Env Step Time: 0.2175
+Consumption Time: 0.4692
+ - GAE Time: 7.610000e-04
+ - PPO Learn Time: 0.4124
+Collected Timesteps: 110,592
+Total Timesteps: 72,513,536
+Total Iterations: 677
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3726
+Policy Entropy: 0.7662
+
+Policy Update Magnitude: 0.0639
+Critic Update Magnitude: 0.0458
+
+Collection Steps/Second: 178,749.4688
+Consumption Steps/Second: 230,778.5156
+Overall Steps/Second: 100,729.4766
+
+Collection Time: 0.5958
+ - Inference Time: 0.1775
+ - Env Step Time: 0.1985
+Consumption Time: 0.4615
+ - GAE Time: 6.823000e-04
+ - PPO Learn Time: 0.4119
+Collected Timesteps: 106,496
+Total Timesteps: 72,620,032
+Total Iterations: 678
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3600
+Policy Entropy: 0.7652
+
+Policy Update Magnitude: 0.0640
+Critic Update Magnitude: 0.0587
+
+Collection Steps/Second: 165,503.4688
+Consumption Steps/Second: 196,121.7500
+Overall Steps/Second: 89,758.2031
+
+Collection Time: 0.5568
+ - Inference Time: 0.1632
+ - Env Step Time: 0.1933
+Consumption Time: 0.4699
+ - GAE Time: 7.024000e-04
+ - PPO Learn Time: 0.4189
+Collected Timesteps: 92,160
+Total Timesteps: 72,712,192
+Total Iterations: 679
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3946
+Policy Entropy: 0.7645
+
+Policy Update Magnitude: 0.0636
+Critic Update Magnitude: 0.0545
+
+Collection Steps/Second: 177,243.1875
+Consumption Steps/Second: 181,190.5625
+Overall Steps/Second: 89,597.5703
+
+Collection Time: 0.4969
+ - Inference Time: 0.1516
+ - Env Step Time: 0.1541
+Consumption Time: 0.4860
+ - GAE Time: 7.614000e-04
+ - PPO Learn Time: 0.4327
+Collected Timesteps: 88,064
+Total Timesteps: 72,800,256
+Total Iterations: 680
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3688
+Policy Entropy: 0.7648
+
+Policy Update Magnitude: 0.0655
+Critic Update Magnitude: 0.0677
+
+Collection Steps/Second: 185,965.1250
+Consumption Steps/Second: 234,286
+Overall Steps/Second: 103,673.7891
+
+Collection Time: 0.5837
+ - Inference Time: 0.1953
+ - Env Step Time: 0.1907
+Consumption Time: 0.4633
+ - GAE Time: 7.797000e-04
+ - PPO Learn Time: 0.4145
+Collected Timesteps: 108,544
+Total Timesteps: 72,908,800
+Total Iterations: 681
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3982
+Policy Entropy: 0.7639
+
+Policy Update Magnitude: 0.0679
+Critic Update Magnitude: 0.0736
+
+Collection Steps/Second: 173,921.2656
+Consumption Steps/Second: 230,377.5156
+Overall Steps/Second: 99,103.8047
+
+Collection Time: 0.6241
+ - Inference Time: 0.2094
+ - Env Step Time: 0.1909
+Consumption Time: 0.4712
+ - GAE Time: 7.213000e-04
+ - PPO Learn Time: 0.4219
+Collected Timesteps: 108,544
+Total Timesteps: 73,017,344
+Total Iterations: 682
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3847
+Policy Entropy: 0.7628
+
+Policy Update Magnitude: 0.0695
+Critic Update Magnitude: 0.0630
+
+Collection Steps/Second: 175,181.2500
+Consumption Steps/Second: 224,096.0312
+Overall Steps/Second: 98,321.2109
+
+Collection Time: 0.5962
+ - Inference Time: 0.1701
+ - Env Step Time: 0.1982
+Consumption Time: 0.4661
+ - GAE Time: 7.785000e-04
+ - PPO Learn Time: 0.4168
+Collected Timesteps: 104,448
+Total Timesteps: 73,121,792
+Total Iterations: 683
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3958
+Policy Entropy: 0.7618
+
+Policy Update Magnitude: 0.0670
+Critic Update Magnitude: 0.0575
+
+Collection Steps/Second: 170,947.7812
+Consumption Steps/Second: 212,226.0469
+Overall Steps/Second: 94,681.7578
+
+Collection Time: 0.5751
+ - Inference Time: 0.1697
+ - Env Step Time: 0.2034
+Consumption Time: 0.4632
+ - GAE Time: 5.281000e-04
+ - PPO Learn Time: 0.4173
+Collected Timesteps: 98,304
+Total Timesteps: 73,220,096
+Total Iterations: 684
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3902
+Policy Entropy: 0.7635
+
+Policy Update Magnitude: 0.0669
+Critic Update Magnitude: 0.0614
+
+Collection Steps/Second: 179,546.9062
+Consumption Steps/Second: 198,441.2031
+Overall Steps/Second: 94,260.9062
+
+Collection Time: 0.5133
+ - Inference Time: 0.1618
+ - Env Step Time: 0.1707
+Consumption Time: 0.4644
+ - GAE Time: 7.159000e-04
+ - PPO Learn Time: 0.4145
+Collected Timesteps: 92,160
+Total Timesteps: 73,312,256
+Total Iterations: 685
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.4155
+Policy Entropy: 0.7635
+
+Policy Update Magnitude: 0.0695
+Critic Update Magnitude: 0.0675
+
+Collection Steps/Second: 182,770.5781
+Consumption Steps/Second: 207,765.1562
+Overall Steps/Second: 97,234.0156
+
+Collection Time: 0.5379
+ - Inference Time: 0.1514
+ - Env Step Time: 0.1958
+Consumption Time: 0.4731
+ - GAE Time: 6.653000e-04
+ - PPO Learn Time: 0.4274
+Collected Timesteps: 98,304
+Total Timesteps: 73,410,560
+Total Iterations: 686
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.4303
+Policy Entropy: 0.7626
+
+Policy Update Magnitude: 0.0674
+Critic Update Magnitude: 0.0550
+
+Collection Steps/Second: 171,923.8281
+Consumption Steps/Second: 247,705.3125
+Overall Steps/Second: 101,485.9141
+
+Collection Time: 0.6671
+ - Inference Time: 0.2011
+ - Env Step Time: 0.2218
+Consumption Time: 0.4630
+ - GAE Time: 6.836000e-04
+ - PPO Learn Time: 0.4150
+Collected Timesteps: 114,688
+Total Timesteps: 73,525,248
+Total Iterations: 687
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3969
+Policy Entropy: 0.7595
+
+Policy Update Magnitude: 0.0670
+Critic Update Magnitude: 0.0538
+
+Collection Steps/Second: 183,065.2812
+Consumption Steps/Second: 222,144.8438
+Overall Steps/Second: 100,360.3047
+
+Collection Time: 0.5594
+ - Inference Time: 0.1827
+ - Env Step Time: 0.1853
+Consumption Time: 0.4610
+ - GAE Time: 6.287000e-04
+ - PPO Learn Time: 0.4132
+Collected Timesteps: 102,400
+Total Timesteps: 73,627,648
+Total Iterations: 688
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.4024
+Policy Entropy: 0.7591
+
+Policy Update Magnitude: 0.0652
+Critic Update Magnitude: 0.0582
+
+Collection Steps/Second: 185,256.9062
+Consumption Steps/Second: 237,054.0156
+Overall Steps/Second: 103,989.4844
+
+Collection Time: 0.5859
+ - Inference Time: 0.1839
+ - Env Step Time: 0.2004
+Consumption Time: 0.4579
+ - GAE Time: 6.847000e-04
+ - PPO Learn Time: 0.4120
+Collected Timesteps: 108,544
+Total Timesteps: 73,736,192
+Total Iterations: 689
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.3934
+Policy Entropy: 0.7598
+
+Policy Update Magnitude: 0.0664
+Critic Update Magnitude: 0.0563
+
+Collection Steps/Second: 176,192.6562
+Consumption Steps/Second: 234,903.2500
+Overall Steps/Second: 100,677.7891
+
+Collection Time: 0.6161
+ - Inference Time: 0.1862
+ - Env Step Time: 0.2041
+Consumption Time: 0.4621
+ - GAE Time: 8.148000e-04
+ - PPO Learn Time: 0.4130
+Collected Timesteps: 108,544
+Total Timesteps: 73,844,736
+Total Iterations: 690
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Average Step Reward: 0.4256
+Policy Entropy: 0.7606
+
+Policy Update Magnitude: 0.0659
+Critic Update Magnitude: 0.0425
+
+Collection Steps/Second: 182,626.3281
+Consumption Steps/Second: 196,144.4062
+Overall Steps/Second: 94,572.0703
+
+Collection Time: 0.5046
+ - Inference Time: 0.1474
+ - Env Step Time: 0.1805
+Consumption Time: 0.4699
+ - GAE Time: 5.703000e-04
+ - PPO Learn Time: 0.4218
+Collected Timesteps: 92,160
+Total Timesteps: 73,936,896
+Total Iterations: 691
+
+
+
+
+
+
+
+
+
+
+
+
+==============

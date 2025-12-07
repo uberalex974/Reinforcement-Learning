@@ -1,10 +1,10 @@
-﻿cmake_minimum_required (VERSION 3.8)
+﻿cmake_minimum_required (VERSION 3.20)
 
 project("RLGymCPP")
 
 # Add all headers and code files
 file(GLOB_RECURSE FILES_SRC "src/*.cpp" "src/*.h")
-add_library(RLGymCPP STATIC ${FILES_SRC})
+add_library(RLGymCPP STATIC ${FILES_SRC} "src/RLGymCPP/Rewards/KickoffProximityReward2v2Enhanced.h")
 target_include_directories(RLGymCPP PUBLIC "src/")
 
 # Set C++ version to 20

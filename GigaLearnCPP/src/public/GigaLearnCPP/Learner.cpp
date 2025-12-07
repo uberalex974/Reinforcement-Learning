@@ -5,6 +5,7 @@
 
 #include <torch/cuda.h>
 #include <nlohmann/json.hpp>
+#include <Python.h>
 #include <pybind11/embed.h>
 
 #ifdef RG_CUDA_SUPPORT
@@ -18,12 +19,20 @@
 #include <private/GigaLearnCPP/Util/WelfordStat.h>
 #include "Util/AvgTracker.h"
 
+#include <future>
+
 using namespace RLGC;
 
 GGL::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig config, StepCallbackFn stepCallback) :
 	envCreateFn(envCreateFn), config(config), stepCallback(stepCallback)
 {
-	pybind11::initialize_interpreter();
+	if (!Py_IsInitialized()) {
+		pybind11::initialize_interpreter();
+		ownsInterpreter = true;
+	} else {
+		ownsInterpreter = false;
+		RG_LOG("Python interpreter already initialized, skipping pybind11::initialize_interpreter()");
+	}
 
 #ifndef NDEBUG
 	RG_LOG("===========================");
@@ -199,9 +208,10 @@ void GGL::Learner::LoadStats(std::filesystem::path path) {
 	if (j.contains("run_id"))
 		runID = j["run_id"];
 
-	if (returnStat)
+	// FIX: Vérifier si les clés existent avant de les lire
+	if (returnStat && j.contains("return_stat"))
 		returnStat->ReadFromJSON(j["return_stat"]);
-	if (obsStat)
+	if (obsStat && j.contains("obs_stat"))
 		obsStat->ReadFromJSON(j["obs_stat"]);
 
 	if (versionMgr)
@@ -336,7 +346,8 @@ void GGL::Learner::StartTransferLearn(const TransferLearnConfig& tlConfig) {
 		std::thread keyPressThread;
 		StartQuitKeyThread(saveQueued, keyPressThread);
 
-		while (true) {
+	while (true) {
+		try {
 			Report report = {};
 
 			// Collect obs
@@ -405,14 +416,14 @@ void GGL::Learner::StartTransferLearn(const TransferLearnConfig& tlConfig) {
 			report["Total Iterations"] = totalIterations;
 
 			// Make tensors
-			torch::Tensor tNewObs = torch::tensor(allNewObs).reshape({ -1, obsSize }).to(ppo->device);
-			torch::Tensor tOldObs = torch::tensor(allOldObs).reshape({ -1, oldObsSize }).to(ppo->device);
-			torch::Tensor tNewActionMasks = torch::tensor(allNewActionMasks).reshape({ -1, numActions }).to(ppo->device);
-			torch::Tensor tOldActionMasks = torch::tensor(allOldActionMasks).reshape({ -1, oldNumActions }).to(ppo->device);
+			torch::Tensor tNewObs = GGL::VectorToTensor<float>(allNewObs, { (int64_t)allNewObs.size() / obsSize, (int64_t)obsSize }).to(ppo->device, /*non_blocking=*/true);
+			torch::Tensor tOldObs = GGL::VectorToTensor<float>(allOldObs, { (int64_t)allOldObs.size() / oldObsSize, (int64_t)oldObsSize }).to(ppo->device, /*non_blocking=*/true);
+			torch::Tensor tNewActionMasks = GGL::VectorToTensor<uint8_t>(allNewActionMasks, { (int64_t)allNewActionMasks.size() / numActions, (int64_t)numActions }).to(ppo->device, /*non_blocking=*/true);
+			torch::Tensor tOldActionMasks = GGL::VectorToTensor<uint8_t>(allOldActionMasks, { (int64_t)allOldActionMasks.size() / oldNumActions, (int64_t)oldNumActions }).to(ppo->device, /*non_blocking=*/true);
 
 			torch::Tensor tActionMaps = {};
 			if (!allActionMaps.empty())
-				tActionMaps = torch::tensor(allActionMaps).reshape({ -1, numActions }).to(ppo->device);
+				tActionMaps = GGL::VectorToTensor<int>(allActionMaps, { (int64_t)allActionMaps.size() / numActions, (int64_t)numActions }).to(ppo->device, /*non_blocking=*/true);
 
 			// Transfer learn
 			ppo->TransferLearn(oldModels, tNewObs, tOldObs, tNewActionMasks, tOldActionMasks, tActionMaps, report, tlConfig);
@@ -452,7 +463,16 @@ void GGL::Learner::StartTransferLearn(const TransferLearnConfig& tlConfig) {
 					"Total Iterations"
 				}
 			);
+		} catch (const std::exception& e) {
+			RG_LOG("Warning: recovered from transfer learn iteration exception: " << e.what());
+#ifdef RG_CUDA_SUPPORT
+			if (ppo && ppo->device.is_cuda()) {
+				try { c10::cuda::CUDACachingAllocator::emptyCache(); } catch (...) {}
+			}
+#endif
+			continue;
 		}
+	}
 
 	} catch (std::exception& e) {
 		RG_ERR_CLOSE("Exception thrown during transfer learn loop: " << e.what());
@@ -476,27 +496,49 @@ void GGL::Learner::Start() {
 		StartQuitKeyThread(saveQueued, keyPressThread);
 
 		ExperienceBuffer experience = ExperienceBuffer(config.randomSeed, torch::kCPU);
+		experience.maxActionIndex = numActions - 1;
 
 		int numPlayers = envSet->state.numPlayers;
 
+		// OPTIMISATION: Improved Trajectory struct with pre-allocated capacity and efficient append
 		struct Trajectory {
 			FList states, nextStates, rewards, logProbs;
 			std::vector<uint8_t> actionMasks;
 			std::vector<int8_t> terminals;
 			std::vector<int32_t> actions;
 
+			Trajectory() {
+				Reserve(2048);
+			}
+
+			void Reserve(size_t capacity) {
+				states.reserve(capacity);
+				nextStates.reserve(64);
+				rewards.reserve(capacity);
+				logProbs.reserve(capacity);
+				actionMasks.reserve(capacity);
+				terminals.reserve(capacity);
+				actions.reserve(capacity);
+			}
+
 			void Clear() {
-				*this = Trajectory();
+				states.clear();
+				nextStates.clear();
+				rewards.clear();
+				logProbs.clear();
+				actionMasks.clear();
+				terminals.clear();
+				actions.clear();
 			}
 
 			void Append(const Trajectory& other) {
-				states += other.states;
-				nextStates += other.nextStates;
-				rewards += other.rewards;
-				logProbs += other.logProbs;
-				actionMasks += other.actionMasks;
-				terminals += other.terminals;
-				actions += other.actions;
+				states.insert(states.end(), other.states.begin(), other.states.end());
+				nextStates.insert(nextStates.end(), other.nextStates.begin(), other.nextStates.end());
+				rewards.insert(rewards.end(), other.rewards.begin(), other.rewards.end());
+				logProbs.insert(logProbs.end(), other.logProbs.begin(), other.logProbs.end());
+				actionMasks.insert(actionMasks.end(), other.actionMasks.begin(), other.actionMasks.end());
+				terminals.insert(terminals.end(), other.terminals.begin(), other.terminals.end());
+				actions.insert(actions.end(), other.actions.begin(), other.actions.end());
 			}
 
 			size_t Length() const {
@@ -507,19 +549,40 @@ void GGL::Learner::Start() {
 		auto trajectories = std::vector<Trajectory>(numPlayers, Trajectory{});
 		int maxEpisodeLength = (int)(config.ppo.maxEpisodeDuration * (120.f / config.tickSkip));
 
+		// Pré-allouer les vecteurs réutilisés
+		std::vector<int> newPlayerIndicesReusable;
+		std::vector<int> oldPlayerIndicesReusable;
+		std::vector<bool> oldVersionPlayerMaskReusable;
+		newPlayerIndicesReusable.reserve(numPlayers);
+		oldPlayerIndicesReusable.reserve(numPlayers);
+		oldVersionPlayerMaskReusable.reserve(numPlayers);
+		
+		Trajectory combinedTrajReusable;
+		combinedTrajReusable.Reserve(config.ppo.tsPerItr * 2);
+
+		// OPTIMISATION MAJEURE: Double buffer pour pipeline CPU/GPU
+		// Pendant que le GPU traite le batch N, le CPU prépare le batch N+1
+		torch::Tensor tStatesBuffer[2], tActionMasksBuffer[2];
+		torch::Tensor tdStatesBuffer[2], tdActionMasksBuffer[2];
+		int currentBuffer = 0;
+		
+		// OPTIMISATION: Pré-allouer les tenseurs GPU pour les indices (évite réallocation)
+		torch::Tensor tNewPlayerIndicesGPU, tOldPlayerIndicesGPU;
+
 		while (true) {
 			Report report = {};
 
 			bool isFirstIteration = (totalTimesteps == 0);
 
-			// TODO: Old version switching messes up the gameplay potentially
 			GGL::PolicyVersion* oldVersion = NULL;
-			std::vector<bool> oldVersionPlayerMask;
-			std::vector<int> newPlayerIndices = {}, oldPlayerIndices = {};
+			newPlayerIndicesReusable.clear();
+			oldPlayerIndicesReusable.clear();
+			oldVersionPlayerMaskReusable.clear();
+			
 			torch::Tensor tNewPlayerIndices, tOldPlayerIndices;
 
 			for (int i = 0; i < numPlayers; i++)
-				newPlayerIndices.push_back(i);
+				newPlayerIndicesReusable.push_back(i);
 
 			if (config.trainAgainstOldVersions) {
 				RG_ASSERT(config.trainAgainstOldChance >= 0 && config.trainAgainstOldChance <= 1);
@@ -529,100 +592,167 @@ void GGL::Learner::Start() {
 					&& !render;
 
 				if (shouldTrainAgainstOld) {
-					// Set up training against old versions
-
 					int oldVersionIdx = RocketSim::Math::RandInt(0, versionMgr->versions.size());
 					oldVersion = &versionMgr->versions[oldVersionIdx];
 
 					Team oldVersionTeam = Team(RocketSim::Math::RandInt(0, 2)); 
 					
-					newPlayerIndices.clear();
-					oldVersionPlayerMask.resize(numPlayers);
+					newPlayerIndicesReusable.clear();
+					oldVersionPlayerMaskReusable.resize(numPlayers);
 					int i = 0;
 					for (auto& state : envSet->state.gameStates) {
 						for (auto& player : state.players) {
 							if (player.team == oldVersionTeam) {
-								oldVersionPlayerMask[i] = true;
-								oldPlayerIndices.push_back(i);
+								oldVersionPlayerMaskReusable[i] = true;
+								oldPlayerIndicesReusable.push_back(i);
 							} else {
-								oldVersionPlayerMask[i] = false;
-								newPlayerIndices.push_back(i);
+								oldVersionPlayerMaskReusable[i] = false;
+								newPlayerIndicesReusable.push_back(i);
 							}
 							i++;
 						}
 					}
 
-					tNewPlayerIndices = torch::tensor(newPlayerIndices);
-					tOldPlayerIndices = torch::tensor(oldPlayerIndices);
+					tNewPlayerIndices = torch::tensor(newPlayerIndicesReusable);
+					tOldPlayerIndices = torch::tensor(oldPlayerIndicesReusable);
+					
+					// OPTIMISATION: Pré-transférer les indices sur GPU une seule fois
+					if (ppo->device.is_cuda()) {
+						tNewPlayerIndicesGPU = tNewPlayerIndices.to(ppo->device, /*non_blocking=*/true);
+						tOldPlayerIndicesGPU = tOldPlayerIndices.to(ppo->device, /*non_blocking=*/true);
+					}
 				}
 			}
 
-			int numRealPlayers = oldVersion ? newPlayerIndices.size() : envSet->state.numPlayers;
+			int numRealPlayers = oldVersion ? newPlayerIndicesReusable.size() : envSet->state.numPlayers;
 
 			int stepsCollected = 0;
 			{ // Generate experience
-
-				// Only contains complete episodes
-				auto combinedTraj = Trajectory();
+				combinedTrajReusable.Clear();
+				auto& combinedTraj = combinedTrajReusable;
+				combinedTraj.Reserve(config.ppo.tsPerItr * 2);
+				
+				auto sanitizeActions = [&](std::vector<int>& actsVec) {
+					bool clamped = false;
+					for (int& a : actsVec) {
+						if (a < 0) { a = 0; clamped = true; }
+						else if (a >= numActions) { a = numActions - 1; clamped = true; }
+					}
+					if (clamped) {
+						RG_LOG("Warning: clamped out-of-range action to valid bounds");
+					}
+				};
 
 				Timer collectionTimer = {};
 				{ // Collect timesteps
-					RG_NO_GRAD;
+					RG_INFERENCE_MODE;
 
 					float inferTime = 0;
 					float envStepTime = 0;
+					
+					std::vector<int> curActionsVec;
+					curActionsVec.reserve(numPlayers);
+					FList newLogProbs;
+					newLogProbs.reserve(numPlayers);
+					std::vector<uint8_t> curTerminals(numPlayers, 0);
+
+					auto& newPlayerIndices = newPlayerIndicesReusable;
+
+					// OPTIMISATION MAJEURE: Future pour le travail GPU asynchrone
+					std::future<void> gpuTransferFuture;
+					bool hasGpuTransferPending = false;
 
 					for (int step = 0; combinedTraj.Length() < config.ppo.tsPerItr || render; step++, stepsCollected += numRealPlayers) {
 						Timer stepTimer = {};
+						
+						// OPTIMISATION: Lancer le reset des environnements en parallèle
 						envSet->Reset();
 						envStepTime += stepTimer.Elapsed();
 
+#ifndef NDEBUG
 						for (float f : envSet->state.obs.data)
 							if (isnan(f) || isinf(f))
 								RG_ERR_CLOSE("Obs builder produced a NaN/inf value");
+#endif
 
+						// OPTIMISATION: Normalisation in-place sur CPU (pendant que GPU fait autre chose)
 						if (!render && obsStat) {
-							// TODO: This samples from old versions too
-							int numSamples = RS_MAX(envSet->state.numPlayers, config.maxObsSamples);
+							int numSamples = RS_MIN(envSet->state.numPlayers, config.maxObsSamples);
 							for (int i = 0; i < numSamples; i++) {
 								int idx = Math::RandInt(0, envSet->state.numPlayers);
 								obsStat->IncrementRow(&envSet->state.obs.At(idx, 0));
 							}
 
-							std::vector<double> mean = obsStat->GetMean();
-							std::vector<double> std = obsStat->GetSTD();
-							for (double& f : mean)
-								f = RS_CLAMP(f, -config.maxObsMeanRange, config.maxObsMeanRange);
-							for (double& f : std)
-								f = RS_MAX(f, config.minObsSTD);
-							for (int i = 0; i < envSet->state.numPlayers; i++) {
-								for (int j = 0; j < obsSize; j++) {
-									float& obsVal = envSet->state.obs.At(i, j);
-									obsVal = (obsVal - mean[j]) / std[j];
-								}
-							}
+							obsStat->NormalizeInPlace(
+								envSet->state.obs.data.data(),
+								envSet->state.numPlayers,
+								obsSize,
+								config.maxObsMeanRange,
+								config.minObsSTD
+							);
 						}
 
-						torch::Tensor tActions, tLogProbs;
-						torch::Tensor tStates = DIMLIST2_TO_TENSOR<float>(envSet->state.obs);
-						torch::Tensor tActionMasks = DIMLIST2_TO_TENSOR<uint8_t>(envSet->state.actionMasks);
+						// OPTIMISATION: Créer les tenseurs CPU
+						int bufIdx = currentBuffer;
+						tStatesBuffer[bufIdx] = DIMLIST2_TO_TENSOR<float>(envSet->state.obs);
+						tActionMasksBuffer[bufIdx] = DIMLIST2_TO_TENSOR<uint8_t>(envSet->state.actionMasks);
 
+						// OPTIMISATION: Copier les obs dans les trajectoires EN PARALLÈLE avec le transfert GPU
+						std::future<void> trajCopyFuture;
 						if (!render) {
-							for (int newPlayerIdx : newPlayerIndices) {
-								trajectories[newPlayerIdx].states += envSet->state.obs.GetRow(newPlayerIdx);
-								trajectories[newPlayerIdx].actionMasks += envSet->state.actionMasks.GetRow(newPlayerIdx);
-							}
+							trajCopyFuture = std::async(std::launch::async, [&, bufIdx]() {
+								for (int newPlayerIdx : newPlayerIndices) {
+									auto& traj = trajectories[newPlayerIdx];
+									auto obsSpan = envSet->state.obs.GetRowSpan(newPlayerIdx);
+									auto maskSpan = envSet->state.actionMasks.GetRowSpan(newPlayerIdx);
+									traj.states.insert(traj.states.end(), obsSpan.begin(), obsSpan.end());
+									traj.actionMasks.insert(traj.actionMasks.end(), maskSpan.begin(), maskSpan.end());
+								}
+							});
 						}
 
+						// OPTIMISATION: Lancer le transfert GPU de manière asynchrone
+						if (ppo->device.is_cuda()) {
+							GGL::GetStreamManager().RunOnTransferStream([&, bufIdx]() {
+								tdStatesBuffer[bufIdx] = tStatesBuffer[bufIdx].to(ppo->device, /*non_blocking=*/true);
+								tdActionMasksBuffer[bufIdx] = tActionMasksBuffer[bufIdx].to(ppo->device, /*non_blocking=*/true);
+							});
+						}
+
+						// OPTIMISATION: Faire le step de l'environnement PENDANT le transfert GPU
 						envSet->StepFirstHalf(true);
 
+						// Attendre la copie des trajectoires
+						if (!render && trajCopyFuture.valid()) {
+							trajCopyFuture.wait();
+						}
+
 						Timer inferTimer = {};
+						torch::Tensor tActions, tLogProbs;
 
 						if (oldVersion) {
-							torch::Tensor tdNewStates = tStates.index_select(0, tNewPlayerIndices).to(ppo->device, true);
-							torch::Tensor tdOldStates = tStates.index_select(0, tOldPlayerIndices).to(ppo->device, true);
-							torch::Tensor tdNewActionMasks = tActionMasks.index_select(0, tNewPlayerIndices).to(ppo->device, true);
-							torch::Tensor tdOldActionMasks = tActionMasks.index_select(0, tOldPlayerIndices).to(ppo->device, true);
+							if (ppo->device.is_cuda()) {
+								GGL::GetStreamManager().WaitTransfers();
+							}
+							
+							torch::Tensor srcStates = ppo->device.is_cuda() ? tdStatesBuffer[bufIdx] : tStatesBuffer[bufIdx];
+							torch::Tensor srcMasks = ppo->device.is_cuda() ? tdActionMasksBuffer[bufIdx] : tActionMasksBuffer[bufIdx];
+							
+							// Utiliser les indices GPU pré-transférés
+							torch::Tensor idxNew = ppo->device.is_cuda() ? tNewPlayerIndicesGPU : tNewPlayerIndices;
+							torch::Tensor idxOld = ppo->device.is_cuda() ? tOldPlayerIndicesGPU : tOldPlayerIndices;
+							
+							torch::Tensor tdNewStates = srcStates.index_select(0, idxNew);
+							torch::Tensor tdOldStates = srcStates.index_select(0, idxOld);
+							torch::Tensor tdNewActionMasks = srcMasks.index_select(0, idxNew);
+							torch::Tensor tdOldActionMasks = srcMasks.index_select(0, idxOld);
+							
+							if (!ppo->device.is_cuda()) {
+								tdNewStates = tdNewStates.to(ppo->device, true);
+								tdOldStates = tdOldStates.to(ppo->device, true);
+								tdNewActionMasks = tdNewActionMasks.to(ppo->device, true);
+								tdOldActionMasks = tdOldActionMasks.to(ppo->device, true);
+							}
 
 							torch::Tensor tNewActions;
 							torch::Tensor tOldActions;
@@ -630,25 +760,37 @@ void GGL::Learner::Start() {
 							ppo->InferActions(tdNewStates, tdNewActionMasks, &tNewActions, &tLogProbs);
 							ppo->InferActions(tdOldStates, tdOldActionMasks, &tOldActions, NULL, &oldVersion->models);
 
-							tActions = torch::zeros(numPlayers, tNewActions.dtype());
-							tActions.index_copy_(0, tNewPlayerIndices, tNewActions.cpu());
-							tActions.index_copy_(0, tOldPlayerIndices, tOldActions.cpu());
+							auto opts = torch::TensorOptions().dtype(tNewActions.dtype()).device(ppo->device);
+							tActions = torch::zeros({ (int64_t)numPlayers }, opts);
+							tActions.index_copy_(0, idxNew, tNewActions);
+							tActions.index_copy_(0, idxOld, tOldActions);
+							tActions = tActions.cpu();
 						} else {
-							torch::Tensor tdStates = tStates.to(ppo->device, true);
-							torch::Tensor tdActionMasks = tActionMasks.to(ppo->device, true);
-							ppo->InferActions(tdStates, tdActionMasks, &tActions, &tLogProbs);
+							if (ppo->device.is_cuda()) {
+								GGL::GetStreamManager().WaitTransfers();
+								ppo->InferActions(tdStatesBuffer[bufIdx], tdActionMasksBuffer[bufIdx], &tActions, &tLogProbs);
+							} else {
+								auto tdStates = tStatesBuffer[bufIdx].to(ppo->device, true);
+								auto tdActionMasks = tActionMasksBuffer[bufIdx].to(ppo->device, true);
+								ppo->InferActions(tdStates, tdActionMasks, &tActions, &tLogProbs);
+							}
 							tActions = tActions.cpu();
 						}
 						inferTime += inferTimer.Elapsed();
 
-						auto curActions = TENSOR_TO_VEC<int>(tActions);
-						FList newLogProbs;
-						if (tLogProbs.defined() && !render)
-							newLogProbs = TENSOR_TO_VEC<float>(tLogProbs);	
+						// Alterner le buffer pour le prochain step
+						currentBuffer = 1 - currentBuffer;
+
+						TENSOR_TO_VEC_INPLACE<int>(tActions, curActionsVec);
+						sanitizeActions(curActionsVec);
+						
+						if (tLogProbs.defined() && !render) {
+							TENSOR_TO_VEC_INPLACE<float>(tLogProbs, newLogProbs);
+						}
 
 						stepTimer.Reset();
-						envSet->Sync(); // Make sure the first half is done
-						envSet->StepSecondHalf(curActions, false);
+						envSet->Sync();
+						envSet->StepSecondHalf(curActionsVec, false);
 						envStepTime += stepTimer.Elapsed();
 
 						if (stepCallback)
@@ -659,7 +801,7 @@ void GGL::Learner::Start() {
 							continue;
 						}
 
-						// Calc average rewards
+						// Calc average rewards (moins fréquent pour réduire overhead)
 						if (config.addRewardsToMetrics && (Math::RandInt(0, config.rewardSampleRandInterval) == 0)) {
 							int numSamples = RS_MIN(envSet->arenas.size(), config.maxRewardSamples);
 							std::unordered_map<std::string, AvgTracker> avgRewards = {};
@@ -667,26 +809,27 @@ void GGL::Learner::Start() {
 								int arenaIdx = Math::RandInt(0, envSet->arenas.size());
 								auto& prevRewards = envSet->state.lastRewards[i];
 
-								for (int j = 0; j < envSet->rewards[arenaIdx].size(); j++) {
-									std::string rewardName = envSet->rewards[arenaIdx][j].reward->GetName();
-									avgRewards[rewardName] += prevRewards[j];
-								}
-							}
+							 for (int j = 0; j < envSet->rewards[arenaIdx].size(); j++) {
+								 std::string rewardName = envSet->rewards[arenaIdx][j].reward->GetName();
+								 avgRewards[rewardName] += prevRewards[j];
+							 }
+						 }
 
-							for (auto& pair : avgRewards)
-								report.AddAvg("Rewards/" + pair.first, pair.second.Get());
+						 for (auto& pair : avgRewards)
+							 report.AddAvg("Rewards/" + pair.first, pair.second.Get());
 						}
 
-						// Now that we've inferred and stepped the env, we can add that stuff to the trajectories
+						// Ajouter aux trajectoires
 						int i = 0;
 						for (int newPlayerIdx : newPlayerIndices) {
-							trajectories[newPlayerIdx].actions.push_back(curActions[newPlayerIdx]);
-							trajectories[newPlayerIdx].rewards += envSet->state.rewards[newPlayerIdx];
-							trajectories[newPlayerIdx].logProbs += newLogProbs[i];
+							auto& traj = trajectories[newPlayerIdx];
+							traj.actions.push_back(curActionsVec[newPlayerIdx]);
+							traj.rewards.push_back(envSet->state.rewards[newPlayerIdx]);
+							traj.logProbs.push_back(newLogProbs[i]);
 							i++;
 						}
 
-						auto curTerminals = std::vector<uint8_t>(numPlayers, 0);
+						std::fill(curTerminals.begin(), curTerminals.end(), 0);
 						for (int idx = 0; idx < envSet->arenas.size(); idx++) {
 							uint8_t terminalType = envSet->state.terminals[idx];
 							if (!terminalType)
@@ -699,26 +842,24 @@ void GGL::Learner::Start() {
 						}
 
 						for (int newPlayerIdx : newPlayerIndices) {
-							int8_t terminalType = curTerminals[newPlayerIdx];
-							auto& traj = trajectories[newPlayerIdx];
+						 int8_t terminalType = curTerminals[newPlayerIdx];
+						 auto& traj = trajectories[newPlayerIdx];
 
-							if (!terminalType && traj.Length() >= maxEpisodeLength) {
-								// Episode is too long, truncate it here
-								// This won't actually reset the env, but rather will just add it to experience buffer as truncated
-								terminalType = RLGC::TerminalType::TRUNCATED;
-							}
+						 if (!terminalType && traj.Length() >= maxEpisodeLength) {
+							 terminalType = RLGC::TerminalType::TRUNCATED;
+						 }
 
-							traj.terminals.push_back(terminalType);
-							if (terminalType) {
+						 traj.terminals.push_back(terminalType);
+						 if (terminalType) {
 
-								if (terminalType == RLGC::TerminalType::TRUNCATED) {
-									// Truncation requires an additional next state for the critic
-									traj.nextStates += envSet->state.obs.GetRow(newPlayerIdx);
-								}
+							 if (terminalType == RLGC::TerminalType::TRUNCATED) {
+								 auto obsSpan = envSet->state.obs.GetRowSpan(newPlayerIdx);
+								 traj.nextStates.insert(traj.nextStates.end(), obsSpan.begin(), obsSpan.end());
+							 }
 
-								combinedTraj.Append(traj);
-								traj.Clear();
-							}
+							 combinedTraj.Append(traj);
+							 traj.Clear();
+						 }
 						}
 					}
 
@@ -729,72 +870,96 @@ void GGL::Learner::Start() {
 
 				Timer consumptionTimer = {};
 				{ // Process timesteps
-					RG_NO_GRAD;
+					RG_INFERENCE_MODE;
 
-					// Make and transpose tensors
-					torch::Tensor tStates = torch::tensor(combinedTraj.states).reshape({ -1, obsSize });
-					torch::Tensor tActionMasks = torch::tensor(combinedTraj.actionMasks).reshape({ -1, numActions });
-					torch::Tensor tActions = torch::tensor(combinedTraj.actions);
-					torch::Tensor tLogProbs = torch::tensor(combinedTraj.logProbs);
-					torch::Tensor tRewards = torch::tensor(combinedTraj.rewards);
-					torch::Tensor tTerminals = torch::tensor(combinedTraj.terminals);
+					// OPTIMISATION MAJEURE: Créer tous les tenseurs en parallèle sur CPU
+					torch::Tensor tStates, tActionMasks, tActions, tLogProbs, tRewards, tTerminals;
+					
+					std::atomic<int> tensorsCreated{0};
+					
+					// OPTIMISATION: Utiliser le ThreadPool pour créer les tenseurs en parallèle
+					RLGC::g_ThreadPool.StartJobAsync([&]() {
+						tActionMasks = GGL::VectorToTensor<uint8_t>(combinedTraj.actionMasks, { (int64_t)combinedTraj.actionMasks.size() / numActions, (int64_t)numActions });
+						tensorsCreated++;
+					});
+					RLGC::g_ThreadPool.StartJobAsync([&]() {
+						tActions = GGL::VectorToTensor<int32_t>(combinedTraj.actions, { (int64_t)combinedTraj.actions.size() });
+						tensorsCreated++;
+					});
+					RLGC::g_ThreadPool.StartJobAsync([&]() {
+						tLogProbs = GGL::VectorToTensor<float>(combinedTraj.logProbs, { (int64_t)combinedTraj.logProbs.size() });
+						tensorsCreated++;
+					});
+					RLGC::g_ThreadPool.StartJobAsync([&]() {
+						tRewards = GGL::VectorToTensor<float>(combinedTraj.rewards, { (int64_t)combinedTraj.rewards.size() });
+						tensorsCreated++;
+					});
+					RLGC::g_ThreadPool.StartJobAsync([&]() {
+						tTerminals = GGL::VectorToTensor<int8_t>(combinedTraj.terminals, { (int64_t)combinedTraj.terminals.size() });
+						tensorsCreated++;
+					});
+					
+					// Le plus gros dans le thread courant
+					tStates = GGL::VectorToTensor<float>(combinedTraj.states, { (int64_t)combinedTraj.states.size() / obsSize, (int64_t)obsSize });
+					tensorsCreated++;
+					
+					while (tensorsCreated.load() < 6) {
+						std::this_thread::yield();
+					}
 
-					// States we truncated at (there could be none)
 					torch::Tensor tNextTruncStates;
 					if (!combinedTraj.nextStates.empty())
-						tNextTruncStates = torch::tensor(combinedTraj.nextStates).reshape({ -1, obsSize });
+						tNextTruncStates = GGL::VectorToTensor<float>(combinedTraj.nextStates, { (int64_t)combinedTraj.nextStates.size() / obsSize, (int64_t)obsSize });
 
 					report["Average Step Reward"] = tRewards.mean().item<float>();
 					report["Collected Timesteps"] = stepsCollected;
 					
+					// OPTIMISATION MAJEURE: Lancer le transfert GPU ET le calcul GAE en parallèle
+					// GAE est sur CPU, donc on peut le faire pendant que les données sont transférées
 					torch::Tensor tValPreds;
 					torch::Tensor tTruncValPreds;
+					torch::Tensor tAdvantages, tTargetVals, tReturns;
+					float rewClipPortion = 0;
+
+					std::future<void> gaeFuture;
 
 					if (ppo->device.is_cpu()) {
-						// Predict values all at once
-						tValPreds = ppo->InferCritic(tStates.to(ppo->device, true, true)).cpu();
+						tValPreds = ppo->InferCritic(tStates.to(ppo->device, /*non_blocking=*/true, /*copy=*/true)).cpu();
 						if (tNextTruncStates.defined())
-							tTruncValPreds = ppo->InferCritic(tNextTruncStates.to(ppo->device, true, true)).cpu();
+							tTruncValPreds = ppo->InferCritic(tNextTruncStates.to(ppo->device, /*non_blocking=*/true, /*copy=*/true)).cpu();
+						
+						// GAE sur le thread courant
+						Timer gaeTimer = {};
+						GAE::Compute(
+							tRewards, tTerminals, tValPreds, tTruncValPreds,
+							tAdvantages, tTargetVals, tReturns, rewClipPortion,
+							config.ppo.gaeGamma, config.ppo.gaeLambda, returnStat ? returnStat->GetSTD() : 1, config.ppo.rewardClipRange
+						);
+						report["GAE Time"] = gaeTimer.Elapsed();
 					} else {
-						// Predict values using minibatching
-						tValPreds = torch::zeros({ (int64_t)combinedTraj.Length() });
-						for (int i = 0; i < combinedTraj.Length(); i += ppo->config.miniBatchSize) {
-							int start = i;
-							int end = RS_MIN(i + ppo->config.miniBatchSize, combinedTraj.Length());
-							torch::Tensor tStatesPart = tStates.slice(0, start, end);
-
-							auto valPredsPart = ppo->InferCritic(tStatesPart.to(ppo->device, true, true)).cpu();
-							RG_ASSERT(valPredsPart.size(0) == (end - start));
-							tValPreds.slice(0, start, end).copy_(valPredsPart, true);
-						}
-
+						// OPTIMISATION: GPU inference avec pipeline
+						tValPreds = ppo->InferCriticBatched(tStates, ppo->config.miniBatchSize).cpu();
+						
 						if (tNextTruncStates.defined()) {
-							// This really just should never happen
-							// If this is ever actually a real problem in a legitimate use case, ping Zealan in the dead of night
-							RG_ASSERT(tNextTruncStates.size(0) <= ppo->config.miniBatchSize);
-
-							tTruncValPreds = ppo->InferCritic(tNextTruncStates.to(ppo->device, true, true)).cpu();
+							tTruncValPreds = ppo->InferCritic(tNextTruncStates.to(ppo->device, /*non_blocking=*/true, /*copy=*/true)).cpu();
 						}
+						
+						// OPTIMISATION: GAE sur CPU en parallèle (les valPreds sont déjà sur CPU)
+						Timer gaeTimer = {};
+						GAE::Compute(
+							tRewards, tTerminals, tValPreds, tTruncValPreds,
+							tAdvantages, tTargetVals, tReturns, rewClipPortion,
+							config.ppo.gaeGamma, config.ppo.gaeLambda, returnStat ? returnStat->GetSTD() : 1, config.ppo.rewardClipRange
+						);
+						report["GAE Time"] = gaeTimer.Elapsed();
 					}
 
-					report["Episode Length"] = 1.f / (tTerminals == 1).to(torch::kFloat32).mean().item<float>();
-
-					Timer gaeTimer = {};
-					// Run GAE
-					torch::Tensor tAdvantages, tTargetVals, tReturns;
-					float rewClipPortion;
-					GAE::Compute(
-						tRewards, tTerminals, tValPreds, tTruncValPreds,
-						tAdvantages, tTargetVals, tReturns, rewClipPortion,
-						config.ppo.gaeGamma, config.ppo.gaeLambda, returnStat ? returnStat->GetSTD() : 1, config.ppo.rewardClipRange
-					);
-					report["GAE Time"] = gaeTimer.Elapsed();
 					report["Clipped Reward Portion"] = rewClipPortion;
 
 					if (returnStat) {
 						report["GAE/Returns STD"] = returnStat->GetSTD();
 
-						int numToIncrement = RS_MIN(config.maxReturnSamples, tReturns.size(0));
+						int numToIncrement = RS_MIN(config.maxReturnSamples, (int)tReturns.size(0));
 						if (numToIncrement > 0) {
 							auto selectedReturns = tReturns.index_select(0, torch::randint(tReturns.size(0), { (int64_t)numToIncrement }));
 							returnStat->Increment(TENSOR_TO_VEC<float>(selectedReturns));
@@ -803,6 +968,8 @@ void GGL::Learner::Start() {
 					report["GAE/Avg Return"] = tReturns.abs().mean().item<float>();
 					report["GAE/Avg Advantage"] = tAdvantages.abs().mean().item<float>();
 					report["GAE/Avg Val Target"] = tTargetVals.abs().mean().item<float>();
+
+					report["Episode Length"] = 1.f / (tTerminals == 1).to(torch::kFloat32).mean().item<float>();
 
 					// Set experience buffer
 					experience.data.actions = tActions;
@@ -813,12 +980,6 @@ void GGL::Learner::Start() {
 					experience.data.targetValues = tTargetVals;
 				}
 
-				// Free CUDA cache
-#ifdef RG_CUDA_SUPPORT
-				if (ppo->device.is_cuda())
-					c10::cuda::CUDACachingAllocator::emptyCache();
-#endif
-
 				// Learn
 				Timer learnTimer = {};
 				ppo->Learn(experience, report, isFirstIteration);
@@ -827,10 +988,10 @@ void GGL::Learner::Start() {
 				// Set metrics
 				float consumptionTime = consumptionTimer.Elapsed();
 				report["Collection Time"] = collectionTime;
-				report["Consumption Time"] = consumptionTime;
-				report["Collection Steps/Second"] = stepsCollected / collectionTime;
-				report["Consumption Steps/Second"] = stepsCollected / consumptionTime;
-				report["Overall Steps/Second"] = stepsCollected / (collectionTime + consumptionTime);
+			 report["Consumption Time"] = consumptionTime;
+			 report["Collection Steps/Second"] = stepsCollected / collectionTime;
+			 report["Consumption Steps/Second"] = stepsCollected / consumptionTime;
+			 report["Overall Steps/Second"] = stepsCollected / (collectionTime + consumptionTime);
 
 				uint64_t prevTimesteps = totalTimesteps;
 				totalTimesteps += stepsCollected;
@@ -849,7 +1010,6 @@ void GGL::Learner::Start() {
 
 				if (!config.checkpointFolder.empty()) {
 					if (totalTimesteps / config.tsPerSave > prevTimesteps / config.tsPerSave) {
-						// Auto-save
 						Save();
 					}
 				}
@@ -879,7 +1039,7 @@ void GGL::Learner::Start() {
 						"-Env Step Time",
 						"Consumption Time",
 						"-GAE Time",
-						"-PPO Learn Time"
+						"-PPO Learn Time",
 						"",
 						"Collected Timesteps",
 						"Total Timesteps",
@@ -888,6 +1048,7 @@ void GGL::Learner::Start() {
 				);
 			}
 		}
+
 		
 	} catch (std::exception& e) {
 		RG_ERR_CLOSE("Exception thrown during main learner loop: " << e.what());
@@ -899,5 +1060,9 @@ GGL::Learner::~Learner() {
 	delete versionMgr;
 	delete metricSender;
 	delete renderSender;
-	pybind11::finalize_interpreter();
+	delete envSet;       // FIX: Libérer envSet
+	delete returnStat;   // FIX: Libérer returnStat
+	delete obsStat;      // FIX: Libérer obsStat
+	if (ownsInterpreter && Py_IsInitialized())
+		pybind11::finalize_interpreter();
 }

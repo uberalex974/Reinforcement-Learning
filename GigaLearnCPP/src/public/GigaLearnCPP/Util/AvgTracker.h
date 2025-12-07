@@ -1,5 +1,6 @@
 #pragma once
 #include "../Framework.h"
+#include <atomic>
 
 namespace GGL {
 	struct AvgTracker {
@@ -49,26 +50,30 @@ namespace GGL {
 		}
 	};
 
-	// Thread-safe variant
-	struct MutAvgTracker : AvgTracker {
-		std::mutex mut = {};
+	// Thread-safe variant using atomics instead of mutex for better performance
+	struct MutAvgTracker {
+		std::atomic<double> total{0.0};
+		std::atomic<uint64_t> count{0};
 
-		MutAvgTracker() {
-			Reset();
-		}
+		MutAvgTracker() = default;
 
 		// Returns 0 if no count
-		float Get() {
-			mut.lock();
-			float result = AvgTracker::Get();
-			mut.unlock();
-			return result;
+		float Get() const {
+			uint64_t c = count.load(std::memory_order_relaxed);
+			if (c > 0) {
+				return static_cast<float>(total.load(std::memory_order_relaxed) / c);
+			}
+			return 0.f;
 		}
 
 		void Add(float val) {
-			mut.lock();
-			AvgTracker::Add(val);
-			mut.unlock();
+			if (!isnan(val)) {
+				// Atomic add using compare-exchange loop
+				double expected = total.load(std::memory_order_relaxed);
+				while (!total.compare_exchange_weak(expected, expected + val, 
+					std::memory_order_relaxed, std::memory_order_relaxed)) {}
+				count.fetch_add(1, std::memory_order_relaxed);
+			}
 		}
 
 		MutAvgTracker& operator+=(float val) {
@@ -76,21 +81,24 @@ namespace GGL {
 			return *this;
 		}
 
-		void Add(float totalVal, uint64_t count) {
-			mut.lock();
-			AvgTracker::Add(totalVal, count);
-			mut.unlock();
+		void Add(float totalVal, uint64_t addCount) {
+			if (!isnan(totalVal)) {
+				double expected = total.load(std::memory_order_relaxed);
+				while (!total.compare_exchange_weak(expected, expected + totalVal,
+					std::memory_order_relaxed, std::memory_order_relaxed)) {}
+				count.fetch_add(addCount, std::memory_order_relaxed);
+			}
 		}
 
 		MutAvgTracker& operator+=(const MutAvgTracker& other) {
-			Add(other.total, other.count);
+			Add(static_cast<float>(other.total.load(std::memory_order_relaxed)), 
+				other.count.load(std::memory_order_relaxed));
 			return *this;
 		}
 
 		void Reset() {
-			mut.lock();
-			AvgTracker::Reset();
-			mut.unlock();
+			total.store(0.0, std::memory_order_relaxed);
+			count.store(0, std::memory_order_relaxed);
 		}
 	};
 }

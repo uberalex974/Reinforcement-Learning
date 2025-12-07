@@ -61,16 +61,14 @@ std::vector<RLGC::Action> GGL::InferUnit::BatchInferActions(const std::vector<RL
 
 		auto device = useGPU ? torch::kCUDA : torch::kCPU;
 
-		auto tObs = torch::tensor(allObs).reshape({(int64_t)players.size(), obsSize});
-		auto tActionMasks = torch::tensor(allActionMasks).reshape({(int64_t)players.size(), this->actionParser->GetActionAmount()});
-
-		tObs = tObs.to(device);
-		tActionMasks = tActionMasks.to(device);
+		// Use pinned memory tensor to allow non-blocking transfer to GPU
+		auto tObs = GGL::VectorToTensor<float>(allObs, { (int64_t)players.size(), (int64_t)obsSize }).to(device, /*non_blocking=*/true);
+		auto tActionMasks = GGL::VectorToTensor<uint8_t>(allActionMasks, { (int64_t)players.size(), (int64_t)this->actionParser->GetActionAmount() }).to(device, /*non_blocking=*/true);
 		torch::Tensor tActions, tLogProbs;
 
 		PPOLearner::InferActionsFromModels(*models, tObs, tActionMasks, deterministic, temperature, false, &tActions, &tLogProbs);
 
-		auto actionIndices = TENSOR_TO_VEC<int>(tActions);
+		auto actionIndices = TENSOR_TO_VEC<int>(tActions.cpu());
 		
 		for (int i = 0; i < batchSize; i++) 
 			results.push_back(actionParser->ParseAction(actionIndices[i], players[i], states[i]));

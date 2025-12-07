@@ -116,10 +116,8 @@ void RLGC::EnvSet::StepFirstHalf(bool async) {
 		Arena* arena = arenas[arenaIdx];
 		auto& gs = state.gameStates[arenaIdx];
 
-		{
-			// Set previous gamestates
-			state.prevGameStates[arenaIdx] = gs;
-		}
+		// Set previous gamestates
+		state.prevGameStates[arenaIdx] = gs;
 
 		gs.ResetBeforeStep();
 
@@ -127,7 +125,8 @@ void RLGC::EnvSet::StepFirstHalf(bool async) {
 		arena->Step(config.actionDelay);
 	};
 
-	g_ThreadPool.StartBatchedJobs(fnStepArena, arenas.size(), async);
+	// OPTIMISATION: Utiliser chunked jobs pour réduire l'overhead du thread pool
+	g_ThreadPool.StartBatchedJobsChunked(fnStepArena, arenas.size(), async);
 }
 
 void RLGC::EnvSet::StepSecondHalf(const IList& actionIndices, bool async) {
@@ -136,12 +135,16 @@ void RLGC::EnvSet::StepSecondHalf(const IList& actionIndices, bool async) {
 
 		Arena* arena = arenas[arenaIdx];
 		auto& gs = state.gameStates[arenaIdx];
-		int playerStartIdx = state.arenaPlayerStartIdx[arenaIdx];
+		const int playerStartIdx = state.arenaPlayerStartIdx[arenaIdx];
+		const int numPlayersInArena = static_cast<int>(gs.players.size());
 			
+		// OPTIMISATION: thread_local pour éviter les allocations
+		thread_local std::vector<Action> actions;
+		actions.resize(numPlayersInArena);
+		
 		// Parse and set actions
-		auto actions = std::vector<Action>(gs.players.size());
 		auto carItr = arena->_cars.begin();
-		for (int i = 0; i < gs.players.size(); i++, carItr++) {
+		for (int i = 0; i < numPlayersInArena; i++, carItr++) {
 			auto& player = gs.players[i];
 			Car* car = *carItr;
 			Action action = actionParsers[arenaIdx]->ParseAction(actionIndices[playerStartIdx + i], player, gs);
@@ -149,109 +152,124 @@ void RLGC::EnvSet::StepSecondHalf(const IList& actionIndices, bool async) {
 			actions[i] = action;
 		}
 
-		// Step arena with new actions we got from observing the last state
-		// Update the gamestate after
-		{
-			arena->Step(config.tickSkip - config.actionDelay);
+		// Step arena
+		arena->Step(config.tickSkip - config.actionDelay);
 
-			if (eventTrackers[arenaIdx])
-				eventTrackers[arenaIdx]->Update(arena);
+		if (eventTrackers[arenaIdx])
+			eventTrackers[arenaIdx]->Update(arena);
 
-			GameState* gsPrev = &state.prevGameStates[arenaIdx];
-			if (gsPrev->IsEmpty())
-				gsPrev = NULL;
+		GameState* gsPrev = &state.prevGameStates[arenaIdx];
+		if (gsPrev->IsEmpty())
+			gsPrev = NULL;
 
-			gs.UpdateFromArena(arena, actions, gsPrev);
-		}
+		gs.UpdateFromArena(arena, actions, gsPrev);
 
 		// Update terminal
 		uint8_t terminalType = TerminalType::NOT_TERMINAL;
-		{
-			for (auto cond : terminalConditions[arenaIdx]) {
-				if (cond->IsTerminal(gs)) {
-					bool isTrunc = cond->IsTruncation();
-					uint8_t curTerminalType = isTrunc ? TerminalType::TRUNCATED : TerminalType::NORMAL;
-					if (terminalType == TerminalType::NOT_TERMINAL) {
-						terminalType = curTerminalType;
-					} else {
-						// We already know this state is terminal
-						// However, if we only know it is a truncated terminal, we should let normal terminals take priority
-						// (Normal terminals are better information than truncations)
-						if (curTerminalType == TerminalType::NORMAL)
-							terminalType = curTerminalType;
-					}
-
-					// NOTE: We can't break since terminal conditions are guaranteed to be called once per step
+		for (auto cond : terminalConditions[arenaIdx]) {
+			if (cond->IsTerminal(gs)) {
+				bool isTrunc = cond->IsTruncation();
+				uint8_t curTerminalType = isTrunc ? TerminalType::TRUNCATED : TerminalType::NORMAL;
+				if (terminalType == TerminalType::NOT_TERMINAL) {
+					terminalType = curTerminalType;
+				} else if (curTerminalType == TerminalType::NORMAL) {
+					terminalType = curTerminalType;
 				}
 			}
-			state.terminals[arenaIdx] = terminalType;
 		}
+		state.terminals[arenaIdx] = terminalType;
 		
 		// Pre-step rewards
-		{
-			for (auto& weighted : rewards[arenaIdx])
-				weighted.reward->PreStep(gs);
+		for (auto& weighted : rewards[arenaIdx])
+			weighted.reward->PreStep(gs);
+
+		// OPTIMISATION MAJEURE: Réutiliser allRewards avec thread_local
+		thread_local FList allRewards;
+		allRewards.assign(numPlayersInArena, 0.0f);
+		
+		// OPTIMISATION: Cache le nombre de reward functions
+		const int numRewardFuncs = static_cast<int>(rewards[arenaIdx].size());
+		
+		// OPTIMISATION: Pré-allouer lastRewards si nécessaire
+		if (config.saveRewards && state.lastRewards[arenaIdx].size() != static_cast<size_t>(numRewardFuncs)) {
+			state.lastRewards[arenaIdx].resize(numRewardFuncs);
 		}
-
-		// Update rewards
-		{
-			FList allRewards = FList(gs.players.size(), 0);
-			for (int rewardIdx = 0; rewardIdx < rewards[arenaIdx].size(); rewardIdx++) {
-				auto& weightedReward = rewards[arenaIdx][rewardIdx];
-				FList output = weightedReward.reward->GetAllRewards(gs, terminalType);
-				for (int i = 0; i < gs.players.size(); i++)
-					allRewards[i] += output[i] * weightedReward.weight;
-
-				// Save the reward
-				if (config.saveRewards) {
-					int playerSampleIndex;
-					if (config.shuffleRewardSampling) {
-						playerSampleIndex = Math::RandInt(0, output.size());
-					} else {
-						// Find player with the lowest id
-						playerSampleIndex = 0;
-						int lowestID = gs.players[0].carId;
-						for (int i = 1; i < gs.players.size(); i++) {
-							auto id = gs.players[i].carId;
-							if (id < lowestID) {
-								lowestID = id;
-								playerSampleIndex = i;
-							}
-						}
-					}
-					// We will only take the reward from a random player
-					float rewardToSave = output[playerSampleIndex];
-						
-					// If zero-sum, use the inner reward
-					if (ZeroSumReward* zeroSum = dynamic_cast<ZeroSumReward*>(weightedReward.reward))
-						rewardToSave = zeroSum->_lastRewards[playerSampleIndex];
-
-					// If needed, initialize last rewards
-					if (state.lastRewards[arenaIdx].empty())
-						state.lastRewards[arenaIdx].resize(rewards[arenaIdx].size());
-
-					state.lastRewards[arenaIdx][rewardIdx] = rewardToSave;
-				}
+		
+		// OPTIMISATION MAJEURE: Buffer thread-local pour éviter allocation par reward
+		thread_local FList rewardOutputBuffer;
+		rewardOutputBuffer.resize(numPlayersInArena);
+		
+		for (int rewardIdx = 0; rewardIdx < numRewardFuncs; rewardIdx++) {
+			auto& weightedReward = rewards[arenaIdx][rewardIdx];
+			
+			// OPTIMISATION: Utiliser GetAllRewardsInPlace pour éviter l'allocation
+			weightedReward.reward->GetAllRewardsInPlace(gs, terminalType, rewardOutputBuffer.data());
+			
+			const float weight = weightedReward.weight;
+			
+			// OPTIMISATION: Accès direct aux données sans bounds checking
+			float* allRewardsPtr = allRewards.data();
+			const float* outputPtr = rewardOutputBuffer.data();
+			
+			// OPTIMISATION: Loop unrolling x4 pour 2v2 (4 joueurs)
+			int i = 0;
+			const int unrollEnd = numPlayersInArena - (numPlayersInArena % 4);
+			for (; i < unrollEnd; i += 4) {
+				allRewardsPtr[i]   += outputPtr[i]   * weight;
+				allRewardsPtr[i+1] += outputPtr[i+1] * weight;
+				allRewardsPtr[i+2] += outputPtr[i+2] * weight;
+				allRewardsPtr[i+3] += outputPtr[i+3] * weight;
+			}
+			for (; i < numPlayersInArena; i++) {
+				allRewardsPtr[i] += outputPtr[i] * weight;
 			}
 
-			for (int i = 0; i < gs.players.size(); i++)
-				state.rewards[playerStartIdx + i] = allRewards[i];
+			if (config.saveRewards) {
+				int playerSampleIndex;
+				if (config.shuffleRewardSampling) {
+					playerSampleIndex = Math::RandInt(0, numPlayersInArena);
+				} else {
+					playerSampleIndex = 0;
+					int lowestID = gs.players[0].carId;
+					for (int pi = 1; pi < numPlayersInArena; pi++) {
+						if (gs.players[pi].carId < lowestID) {
+							lowestID = gs.players[pi].carId;
+							playerSampleIndex = pi;
+						}
+					}
+				}
+				float rewardToSave = rewardOutputBuffer[playerSampleIndex];
+					
+				const std::vector<float>* innerRewards = weightedReward.reward->GetInnerRewards();
+				if (innerRewards && playerSampleIndex < static_cast<int>(innerRewards->size())) {
+					rewardToSave = (*innerRewards)[playerSampleIndex];
+				}
+
+				state.lastRewards[arenaIdx][rewardIdx] = rewardToSave;
+			}
 		}
 
-		// Update observations
-		{
-			for (int i = 0; i < gs.players.size(); i++)
-				state.obs.Set(playerStartIdx + i, obsBuilders[arenaIdx]->BuildObs(gs.players[i], gs));
+		// OPTIMISATION: Copie directe des rewards
+		for (int i = 0; i < numPlayersInArena; i++) {
+			state.rewards[playerStartIdx + i] = allRewards[i];
 		}
 
-		// Update action masks
-		{
-			for (int i = 0; i < gs.players.size(); i++)
-				state.actionMasks.Set(playerStartIdx + i, actionParsers[arenaIdx]->GetActionMask(gs.players[i], gs));
+		// OPTIMISATION MAJEURE: Build obs et masks en utilisant SetFromPtr quand possible
+		for (int i = 0; i < numPlayersInArena; i++) {
+			const auto& player = gs.players[i];
+			
+			// Build obs et set directement
+			auto obsVec = obsBuilders[arenaIdx]->BuildObs(player, gs);
+			state.obs.SetFromPtr(playerStartIdx + i, obsVec.data(), obsVec.size());
+			
+			// Build action mask et set directement
+			auto maskVec = actionParsers[arenaIdx]->GetActionMask(player, gs);
+			state.actionMasks.SetFromPtr(playerStartIdx + i, maskVec.data(), maskVec.size());
 		}
 	};
 
-	g_ThreadPool.StartBatchedJobs(fnStepArenas, arenas.size(), async);
+	// OPTIMISATION: Utiliser chunked jobs pour réduire l'overhead
+	g_ThreadPool.StartBatchedJobsChunked(fnStepArenas, arenas.size(), async);
 }
 
 void RLGC::EnvSet::ResetArena(int index) {
@@ -261,37 +279,76 @@ void RLGC::EnvSet::ResetArena(int index) {
 
 	newState.userInfo = userInfos[index];
 
-	// Update event tracker
 	if (eventTrackers[index])
 		eventTrackers[index]->ResetPersistentInfo();
 
-	// Reset all the other stuff
 	obsBuilders[index]->Reset(newState);
 	for (auto& cond : terminalConditions[index])
 		cond->Reset(newState);
 	for (auto& weightedReward : rewards[index])
 		weightedReward.reward->Reset(newState);
 
-	int playerStartIdx = state.arenaPlayerStartIdx[index];
-	for (int i = 0; i < newState.players.size(); i++) {
-
-		// Update obs
-		auto obs = obsBuilders[index]->BuildObs(newState.players[i], newState);
-		state.obs.Set(playerStartIdx + i, obs);
-
-		// Update action mask
-		auto actionMask = actionParsers[index]->GetActionMask(newState.players[i], newState);
-		state.actionMasks.Set(playerStartIdx + i, actionMask);
+	const int playerStartIdx = state.arenaPlayerStartIdx[index];
+	const int numPlayers = static_cast<int>(newState.players.size());
+	
+	// OPTIMISATION: Build obs and masks using SetFromPtr
+	for (int i = 0; i < numPlayers; i++) {
+		auto obsVec = obsBuilders[index]->BuildObs(newState.players[i], newState);
+		state.obs.SetFromPtr(playerStartIdx + i, obsVec.data(), obsVec.size());
+		
+		auto maskVec = actionParsers[index]->GetActionMask(newState.players[i], newState);
+		state.actionMasks.SetFromPtr(playerStartIdx + i, maskVec.data(), maskVec.size());
 	}
 
-	// Remove previous state
 	state.prevGameStates[index].MakeEmpty();
 }
 
 void RLGC::EnvSet::Reset() {
-	for (int i = 0; i < arenas.size(); i++)
-		if (state.terminals[i])
-			g_ThreadPool.StartJobAsync(std::bind(&EnvSet::ResetArena, this, std::placeholders::_1), i);
-	std::fill(state.terminals.begin(), state.terminals.end(), 0);
-	g_ThreadPool.WaitUntilDone();
+	// OPTIMISATION: Early exit si rien à réinitialiser
+	bool hasTerminals = false;
+	const size_t numArenas = arenas.size();
+	
+	for (size_t i = 0; i < numArenas; i++) {
+		if (state.terminals[i]) {
+			hasTerminals = true;
+			break;
+		}
+	}
+	
+	if (!hasTerminals) {
+		return;
+	}
+	
+	// OPTIMISATION: thread_local vector pour éviter réallocation
+	thread_local std::vector<int> indicesToReset;
+	indicesToReset.clear();
+	indicesToReset.reserve(numArenas);
+	
+	for (size_t i = 0; i < numArenas; i++) {
+		if (state.terminals[i]) {
+			indicesToReset.push_back(static_cast<int>(i));
+		}
+	}
+	
+	// Reset terminals immediately (AVANT les resets pour éviter double-reset)
+	for (int idx : indicesToReset) {
+		state.terminals[idx] = 0;
+	}
+	
+	// OPTIMISATION: Parallel reset si plusieurs arènes à réinitialiser
+	const size_t numToReset = indicesToReset.size();
+	if (numToReset > 2) {
+		// Utiliser le thread pool pour les resets parallèles
+		for (int idx : indicesToReset) {
+			g_ThreadPool.StartJobAsync([this, idx]() {
+				ResetArena(idx);
+			});
+		}
+		g_ThreadPool.WaitUntilDone();
+	} else {
+		// Pour 1-2 arènes, le séquentiel est plus rapide (overhead du pool)
+		for (int idx : indicesToReset) {
+			ResetArena(idx);
+		}
+	}
 }

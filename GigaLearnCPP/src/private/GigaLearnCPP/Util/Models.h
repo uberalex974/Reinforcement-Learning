@@ -101,9 +101,15 @@ namespace GGL {
 
 		virtual torch::Tensor Forward(torch::Tensor input, bool halfPrec);
 		
+		// NOUVELLE FONCTIONNALITÉ: Forward batché pour plusieurs inputs
+		virtual torch::Tensor ForwardBatched(const std::vector<torch::Tensor>& inputs, bool halfPrec);
+		
 		void SetOptimLR(float newLR);
 
 		void StepOptim();
+		
+		// NOUVELLE FONCTIONNALITÉ: Fused step + zero_grad
+		void StepOptimFused();
 
 		std::filesystem::path GetSuffixedSavePath(std::filesystem::path folder, std::string suffix) const {
 			std::string filename = modelName + suffix ;
@@ -177,6 +183,13 @@ namespace GGL {
 		void StepOptims() {
 			for (Model* model : *this) {
 				model->StepOptim();
+			}
+		}
+		
+		// OPTIMISATION MAJEURE: Version fusionnée pour tous les modèles
+		void StepOptimsFused() {
+			for (Model* model : *this) {
+				model->StepOptimFused();
 			}
 		}
 

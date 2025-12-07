@@ -28,11 +28,11 @@ namespace GGL {
 		// Checkpoints are saved here as timestep-numbered subfolders
 		//	e.g. a checkpoint at 20,000 steps will save to a subfolder called "20000"
 		// Set empty to disable saving
-		std::filesystem::path checkpointFolder = "checkpoints"; 
+		std::filesystem::path checkpointFolder = "C:\\Giga\\GigaLearnCPP-Leak\\checkpoints"; 
 
 		// Save every timestep
 		// Set to zero to just use timestepsPerIteration
-		int64_t tsPerSave = 1'000'000;
+		int64_t tsPerSave = 10'000'000;
 
 		int64_t randomSeed = -1; // Set to -1 to use the current time
 		int checkpointsToKeep = 8; // Checkpoint storage limit before old checkpoints are deleted, set to -1 to disable
@@ -56,15 +56,15 @@ namespace GGL {
 		// Send metrics to the python metrics receiver
 		// The receiver can then log them to wandb or whatever
 		bool sendMetrics = true;
-		std::string metricsProjectName = "gigalearncpp"; // Project name for the python metrics receiver
-		std::string metricsGroupName = "unnamed-runs"; // Group name for the python metrics receiver
+		std::string metricsProjectName = "Reinforcement Learning"; // Project name for the python metrics receiver
+		std::string metricsGroupName = "Rocket League"; // Group name for the python metrics receiver
 		std::string metricsRunName = "gigalearncpp-run"; // Run name for the python metrics receiver
 
 		bool savePolicyVersions = false;
 		int64_t tsPerVersion = 25'000'000;
 		int maxOldVersions = 32;
 
-		bool trainAgainstOldVersions = false;
+		bool trainAgainstOldVersions = true;
 		float trainAgainstOldChance = 0.15f; // Chance (from 0 - 1) that an iteration will train against an old version
 
 		SkillTrackerConfig skillTracker = {};

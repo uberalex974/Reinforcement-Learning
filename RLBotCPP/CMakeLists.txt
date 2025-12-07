@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.20)
 project(RLBotCPP LANGUAGES CXX)
 
 set(source_files
@@ -42,7 +42,11 @@ set(header_files
 )
 
 add_library(RLBotCPP STATIC ${source_files} ${header_files})
-target_include_directories(RLBotCPP PUBLIC inc lib/inc)
+# Prefer the bundled flatbuffers headers over any globally available ones.
+target_include_directories(RLBotCPP BEFORE PUBLIC
+    ${PROJECT_SOURCE_DIR}/lib/inc
+    ${PROJECT_SOURCE_DIR}/inc
+)
 target_compile_features(RLBotCPP PUBLIC cxx_std_17)
 
 #link linux libraries

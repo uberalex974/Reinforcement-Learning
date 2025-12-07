@@ -28,7 +28,7 @@ namespace GGL {
 
 		// Use half-precision models for inference
 		// This is much faster on GPU, not so much for CPU
-		bool useHalfPrecision = false;
+		bool useHalfPrecision = true;
 
 		PartialModelConfig policy, critic, sharedHead;
 
@@ -50,7 +50,7 @@ namespace GGL {
 
 		float gaeLambda = 0.95f;
 		float gaeGamma = 0.99f;
-		float rewardClipRange = 10; // Clip range for normalized rewards, set 0 to disable
+		float rewardClipRange = 200; // Clip range for normalized rewards, set 0 to disable
 
 		bool useGuidingPolicy = false;
 		std::filesystem::path guidingPolicyPath = "guiding_policy/"; // Path of the guiding policy model(s)

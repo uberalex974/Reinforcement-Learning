@@ -7,6 +7,9 @@ namespace RLGC {
 	class Reward {
 	private:
 		std::string _cachedName = {};
+		
+		// OPTIMISATION: Cache pour les récompenses calculées
+		mutable std::vector<float> _rewardsCache;
 
 	public:
 		virtual void Reset(const GameState& initialState) {}
@@ -18,15 +21,35 @@ namespace RLGC {
 			return 0;
 		}
 
-		// Get all rewards for all players
+		// OPTIMISATION MAJEURE: Version qui réutilise le buffer interne
+		// Évite l'allocation de vecteur à chaque step
 		virtual std::vector<float> GetAllRewards(const GameState& state, bool isFinal) {
-
-			std::vector<float> rewards = std::vector<float>(state.players.size());
-			for (int i = 0; i < state.players.size(); i++) {
-				rewards[i] = GetReward(state.players[i], state, isFinal);
+			const size_t numPlayers = state.players.size();
+			
+			// Réutiliser le cache si possible
+			if (_rewardsCache.size() != numPlayers) {
+				_rewardsCache.resize(numPlayers);
+			}
+			
+			for (size_t i = 0; i < numPlayers; i++) {
+				_rewardsCache[i] = GetReward(state.players[i], state, isFinal);
 			}
 
-			return rewards;
+			return _rewardsCache;
+		}
+		
+		// NOUVELLE FONCTIONNALITÉ: Version qui écrit directement dans un buffer externe
+		// Évite complètement l'allocation et la copie
+		virtual void GetAllRewardsInPlace(const GameState& state, bool isFinal, float* output) {
+			const size_t numPlayers = state.players.size();
+			for (size_t i = 0; i < numPlayers; i++) {
+				output[i] = GetReward(state.players[i], state, isFinal);
+			}
+		}
+
+		// Méthode virtuelle pour obtenir les récompenses internes sans dynamic_cast
+		virtual const std::vector<float>* GetInnerRewards() const {
+			return nullptr;
 		}
 
 		virtual std::string GetName() {

@@ -6,6 +6,15 @@
 
 #include "flatbuffers/flatbuffers.h"
 
+// Some flatbuffer generators emit MANUALLY_ALIGNED_STRUCT/STRUCT_END aliases.
+// Define them when missing so this header stays compatible with newer flatbuffers.
+#ifndef MANUALLY_ALIGNED_STRUCT
+#define MANUALLY_ALIGNED_STRUCT FLATBUFFERS_MANUALLY_ALIGNED_STRUCT
+#endif
+#ifndef STRUCT_END
+#define STRUCT_END FLATBUFFERS_STRUCT_END
+#endif
+
 namespace rlbot {
 namespace flat {
 

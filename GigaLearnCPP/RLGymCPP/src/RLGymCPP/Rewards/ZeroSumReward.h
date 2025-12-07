@@ -19,6 +19,11 @@ namespace RLGC {
 
 		}
 
+		// OPTIMISATION: Override pour éviter le dynamic_cast coûteux
+		virtual const std::vector<float>* GetInnerRewards() const override {
+			return _lastRewards.empty() ? nullptr : &_lastRewards;
+		}
+
 	protected: 
 
 		// Get all rewards for all players

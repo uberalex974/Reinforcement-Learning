@@ -37,6 +37,7 @@ namespace GGL {
 			totalIterations = 0;
 
 		StepCallbackFn stepCallback = NULL;
+		bool ownsInterpreter = false;
 
 		Learner(RLGC::EnvCreateFn envCreateFunc, LearnerConfig config, StepCallbackFn stepCallback = NULL);
 		void Start();

@@ -35,34 +35,47 @@ GGL::Model::Model(
 
 torch::Tensor GGL::Model::Forward(torch::Tensor input, bool halfPrec) {
 
+	// OPTIMISATION: Ne jamais utiliser half precision si les gradients sont activés
 	if (torch::GradMode::is_enabled())
 		halfPrec = false;
 
 	if (halfPrec) {
-
 		if (_seqHalfOutdated) {
 			_seqHalfOutdated = false;
 
 			if (seqHalf->size() == 0) {
+				// Première initialisation: cloner et convertir
 				for (auto& mod : *seq)
 					seqHalf->push_back(mod.clone());
-				seqHalf->to(RG_HALFPERC_TYPE, true);
+				seqHalf->to(RG_HALFPERC_TYPE, /*non_blocking=*/true);
 			} else {
+				// OPTIMISATION: Copie batch des paramètres
+				RG_NO_GRAD;
 				auto fromParams = seq->parameters();
 				auto toParams = seqHalf->parameters();
-				for (int i = 0; i < fromParams.size(); i++) {
-					auto scaledParams = fromParams[i].to(RG_HALFPERC_TYPE, true);
-					toParams[i].copy_(scaledParams, true);
+				
+				// OPTIMISATION: Utiliser copy_ avec non_blocking
+				for (size_t i = 0; i < fromParams.size(); i++) {
+					toParams[i].copy_(fromParams[i], /*non_blocking=*/true);
 				}
 			}
 		}
 		
-		auto halfInput = input.to(RG_HALFPERC_TYPE);
-		auto halfOutput = seqHalf->forward(halfInput);
-		return halfOutput.to(torch::kFloat);
+		// OPTIMISATION: Conversion et forward en une seule ligne
+		return seqHalf->forward(input.to(RG_HALFPERC_TYPE, /*non_blocking=*/true)).to(torch::kFloat, /*non_blocking=*/true);
 	} else {
 		return seq->forward(input);
 	}
+}
+
+// OPTIMISATION MAJEURE: Forward batché pour plusieurs inputs
+torch::Tensor GGL::Model::ForwardBatched(const std::vector<torch::Tensor>& inputs, bool halfPrec) {
+	if (inputs.empty()) return {};
+	if (inputs.size() == 1) return Forward(inputs[0], halfPrec);
+	
+	// Concaténer tous les inputs
+	auto combined = torch::cat(inputs, 0);
+	return Forward(combined, halfPrec);
 }
 
 // Get sizes of all parameters in a sequence
@@ -82,7 +95,21 @@ void GGL::Model::SetOptimLR(float newLR) {
 
 void GGL::Model::StepOptim() {
 	optim->step();
-	optim->zero_grad();
+	// OPTIMISATION: set_to_none=true est plus rapide
+	optim->zero_grad(/*set_to_none=*/true);
+	_seqHalfOutdated = true;
+}
+
+// OPTIMISATION MAJEURE: Version fusionnée
+void GGL::Model::StepOptimFused() {
+	optim->step();
+	
+	// OPTIMISATION: Reset gradients directement
+	for (auto& param : this->parameters()) {
+		if (param.mutable_grad().defined()) {
+			param.mutable_grad().reset();
+		}
+	}
 	_seqHalfOutdated = true;
 }
 
